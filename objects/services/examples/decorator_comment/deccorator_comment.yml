@@ -1,0 +1,16 @@
+# Example of adding decortors and comments
+name: decorator_comment
+docstring: Example of adding decorators and comments
+dependencies: []
+
+methods:
+  new_account:
+    docstring: Create checking or savings account for user.  Creates new user if user does not already exists.
+    in:
+      # This is comment 1. Comments have space after the #. Decorator don't have space after #
+      #Decorator1
+      arg1: ""  # This is comment 2
+    out:
+      #Decorator2
+      #Decorator3
+      arg2: "" 
