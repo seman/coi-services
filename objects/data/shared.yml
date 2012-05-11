@@ -68,6 +68,7 @@ FrameOfReference: !Extends_InformationResource
 
   # Specified bounds in 2 or 3 dimensions within which entity exists
   # Mandatory
+  #Required shared.yml
   geospatial_constraint: !GeospatialBounds
 
   # Specified time constraint within which entity exists

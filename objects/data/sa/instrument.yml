@@ -13,7 +13,7 @@ InstrumentDevice: !Extends_Device
   
 
 InstrumentModel: !Extends_DeviceModel
-  #This defines the characteristics of an instrument model
+  # This defines the characteristics of an instrument model
   model_label: ""
   manufacturer: !Institution
   reference_url: ""
@@ -51,7 +51,7 @@ InstrumentAgentInstance: !Extends_AgentInstance
   comms_device_port: 0
   comms_server_address: ""
   comms_server_port: ""
-  #replace all the individual items about with driver_config and agent_config dict
+  # Replace all the individual items about with driver_config and agent_config dict
   driver_config: {}
   agent_config: {}
   port_agent_work_dir: ""

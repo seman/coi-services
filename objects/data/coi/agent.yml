@@ -6,15 +6,19 @@ AgentCapability:
 ServiceAgreementProposal:
   sap_id: ""
   sequence_num: 0
-  target_resource_ids: []
+  target_resource_ids: [] #testing133
   conditions: {}
+  #Required
   clauses: {}
-
 AgentCommand:
   command_id: ""
+  #NotNull
   command: ""
   args: []
-  kwargs: {}
+  #NotRequred
+  # this is nice
+  # Testing555
+  kwargs: {}# Testing34444 #testing 2222
 
 AgentCommandResult:
   command_id: ""

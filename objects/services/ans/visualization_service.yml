@@ -11,9 +11,14 @@ methods:
   start_google_dt_transform:
     docstring: Request to start a transform process for a data_product_id. Will return a token that will be used with the get_google_dt call
     in:
+      #Required
+      #Int
       data_product_id: ""
+      #Notnull
       query: ""
     out:
+      #RequiredOut1
+      #RequiredOut2
       data_product_id_token: ""
     throws:
       NotFound: object with specified id, query does not exist
@@ -21,6 +26,7 @@ methods:
   is_google_dt_ready:
     docstring: A non-blocking call that returns instantly with "True" or "False"
     in:
+      #NotNull
       data_product_id_token: ""
     out:
       datatable: ""

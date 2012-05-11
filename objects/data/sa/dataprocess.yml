@@ -1,5 +1,5 @@
 DataProcessDefinition: !Extends_InformationResource
-  #module and class for source code
+  # module and class for source code
   module: ""
   class_name: ""
 
@@ -12,7 +12,7 @@ DataProcess: !Extends_InformationResource
   # https://confluence.oceanobservatories.org/display/CIDev/R2+Resource+Page+for+Data+Process
 
   # Orchestrates processing of a stream, from transform definition to scheduling.
-
+  #Required dataprocess.yml
   ATBD_reference: ""
   source_code: ""
   input_subscription_id: ""
