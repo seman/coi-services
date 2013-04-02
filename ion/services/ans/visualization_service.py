@@ -91,7 +91,7 @@ class VisualizationService(BaseVisualizationService):
             log.debug( "In Monitor Loop worker: " + self.id)
             for queue in queues:
 
-                log.debug(queue['name'], queue['messages'])
+                #log.debug(queue['name'], queue['messages'])
 
                 #Check for queues which are getting too large and clean them up if need be.
                 if queue['messages'] > self.monitor_queue_size:
@@ -128,6 +128,10 @@ class VisualizationService(BaseVisualizationService):
             if visualization_parameters.has_key('query'):
                 query=visualization_parameters['query']
 
+        import time
+
+        s = time.time()
+
         # Perform a look up to check and see if the DP is indeed a realtime GDT stream
         if not data_product_id:
             raise BadRequest("The data_product_id parameter is missing")
@@ -135,35 +139,59 @@ class VisualizationService(BaseVisualizationService):
         
         if not data_product:
             raise NotFound("Data product %s does not exist" % data_product_id)
+        e = time.time()
+        print "IRV TIME: look up", e - s
 
         data_product_stream_id = None
         workflow_def_id = None
+
+
+        s = time.time()
 
         #TODO - Add this workflow definition to preload data
         # Check to see if the workflow defnition already exist
         workflow_def_ids,_ = self.clients.resource_registry.find_resources(restype=RT.WorkflowDefinition, name='Realtime_Google_DT', id_only=True)
 
+        e = time.time()
+        print "IRV TIME: find resource: ", e - s
+
+        s = time.time()
         if len(workflow_def_ids) > 0:
             workflow_def_id = workflow_def_ids[0]
         else:
             workflow_def_id = self._create_google_dt_workflow_def()
+        e = time.time()
+        print "IRV TIME: workflow def: ", e - s
 
+        s = time.time()
         #Create and start the workflow. Take about 4 secs .. wtf
         workflow_id, workflow_product_id = self.clients.workflow_management.create_data_process_workflow(workflow_definition_id=workflow_def_id,
             input_data_product_id=data_product_id, persist_workflow_data_product=PERSIST_REALTIME_DATA_PRODUCTS, timeout=self.create_workflow_timeout)
+        e = time.time()
+        print "IRV TIME: create data process workflow: ", e - s
 
+        s = time.time()
         # detect the output data product of the workflow
         workflow_dp_ids,_ = self.clients.resource_registry.find_objects(workflow_id, PRED.hasDataProduct, RT.DataProduct, True)
         if len(workflow_dp_ids) != 1:
             raise ValueError("Workflow Data Product ids representing output DP must contain exactly one entry")
+        e = time.time()
+        print "IRV TIME: look find_objects: ", e - s
 
+        s = time.time()
         # find associated stream id with the output
         workflow_output_stream_ids, _ = self.clients.resource_registry.find_objects(workflow_dp_ids[len(workflow_dp_ids) - 1], PRED.hasStream, None, True)
         data_product_stream_id = workflow_output_stream_ids
+        e = time.time()
+        print "IRV TIME: look find_objects 2:", e - s
 
+        s = time.time()
         # Create a queue to collect the stream granules - idempotency saves the day!
         query_token = create_unique_identifier(USER_VISUALIZATION_QUEUE)
+        e = time.time()
+        print "IRV TIME: create unique id", e - s
 
+        s = time.time()
         xq = self.container.ex_manager.create_xn_queue(query_token)
         subscription_id = self.clients.pubsub_management.create_subscription(
             stream_ids=data_product_stream_id,
@@ -173,6 +201,8 @@ class VisualizationService(BaseVisualizationService):
 
         # after the queue has been created it is safe to activate the subscription
         self.clients.pubsub_management.activate_subscription(subscription_id)
+        e = time.time()
+        print "IRV TIME: activate_subscription: ", e - s
 
         if callback == "":
             return query_token

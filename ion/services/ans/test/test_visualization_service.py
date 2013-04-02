@@ -291,6 +291,11 @@ class TestVisualizationServiceIntegration(VisualizationIntegrationTestHelper):
     @patch.dict(CFG, {'user_queue_monitor_timeout': 5})
     def test_realtime_visualization(self):
 
+        import time
+
+        start = time.time()
+        s = start
+
         #Start up multiple vis service workers if not a CEI launch
         if not os.getenv('CEI_LAUNCH_TEST', False):
             vpid1 = self.container.spawn_process('visualization_service1','ion.services.ans.visualization_service','VisualizationService', CFG )
@@ -298,15 +303,29 @@ class TestVisualizationServiceIntegration(VisualizationIntegrationTestHelper):
             vpid2 = self.container.spawn_process('visualization_service2','ion.services.ans.visualization_service','VisualizationService', CFG )
             self.addCleanup(self.container.terminate_process, vpid2)
 
+        end = time.time()
+        print "VS Time : spawn ", end - start
+
+        start = time.time()
+
         #Create the input data product
         ctd_stream_id, ctd_parsed_data_product_id = self.create_ctd_input_stream_and_data_product()
         ctd_sim_pid = self.start_sinusoidal_input_stream_process(ctd_stream_id)
 
+        end = time.time()
+        print "VS Time : create data product", end - start
+
+        start = time.time()
 
         vis_params ={}
         vis_token = self.vis_client.initiate_realtime_visualization(data_product_id=ctd_parsed_data_product_id, visualization_parameters=vis_params)
 
+        end = time.time()
+        print "VS Time : initiate real-time vis", end - start
+
+        start = time.time()
         result = gevent.event.AsyncResult()
+
 
         def get_vis_messages(get_data_count=7):  #SHould be an odd number for round robbin processing by service workers
 
@@ -314,29 +333,62 @@ class TestVisualizationServiceIntegration(VisualizationIntegrationTestHelper):
             get_cnt = 0
             while get_cnt < get_data_count:
 
+                start = time.time()
+
                 vis_data = self.vis_client.get_realtime_visualization_data(vis_token)
+
+                end = time.time()
+                print "VS Time : get_realtime_visualization_data: ", end - start
+
                 if (vis_data):
+                    start = time.time()
+
                     self.validate_google_dt_transform_results(vis_data)
+
+                    end = time.time()
+                    print "VS Time : validate_google_dt_transform_results: ", end - start
+
+
+
 
                 get_cnt += 1
                 gevent.sleep(5) # simulates the polling from UI
 
             result.set(get_cnt)
 
+        end = time.time()
+        print "VS Time : get_vis_messages", end - start
+
+        start  = time.time()
+
         gevent.spawn(get_vis_messages)
 
+        end = time.time()
+        print "VS Time : spawn get_vis_messages", end - start
+
+
+        start  = time.time()
+
         result.get(timeout=90)
+
+        end = time.time()
+        print "VS Time : result get", end - start
 
         #Trying to continue to receive messages in the queue
         gevent.sleep(2.0)  # Send some messages - don't care how many
 
 
+        start  = time.time()
         # Cleanup
         self.vis_client.terminate_realtime_visualization_data(vis_token)
 
 
         #Turning off after everything - since it is more representative of an always on stream of data!
         self.process_dispatcher.cancel_process(ctd_sim_pid) # kill the ctd simulator process - that is enough data
+
+        end = time.time()
+        print "VS Time : clean up", end - start
+        print "VS Time : total", end - s
 
     @patch.dict(CFG, {'user_queue_monitor_timeout': 5})
     @patch.dict(CFG, {'user_queue_monitor_size': 25})

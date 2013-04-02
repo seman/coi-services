@@ -158,12 +158,24 @@ class WorkflowManagementService(BaseWorkflowManagementService):
         output_data_product_id = None # Overall product id to return
 
         #Iterate through the workflow steps to setup the data processes and connect them together.
+        import time
+
+        s = time.time()
+        index = 0
         for wf_step in workflow_definition.workflow_steps:
+            index += 1
             log.debug("wf_step.data_process_definition_id: %s" , wf_step.data_process_definition_id)
 
+            s3 = time.time()
             data_process_definition = self.clients.resource_registry.read(wf_step.data_process_definition_id)
+            e3 = time.time()
+            print "\n\nWMS TIME: Index :", index, "\t self.clients.resource_registry.read ", index, " Time:", e3 - s3
+            print "\n\n"
 
+            index2 = 0
+            s2 = time.time()
             for binding, stream_definition_id in data_process_definition.output_bindings.iteritems():
+                index2 += 1
 
                 #--------------------------------------------------------------------------------
                 # Create an output data product for each binding/stream definition
@@ -177,6 +189,7 @@ class WorkflowManagementService(BaseWorkflowManagementService):
 
                 tdom, sdom = time_series_domain()
 
+                s4 = time.time()
                 data_product_obj = IonObject(RT.DataProduct, 
                                              name            = data_product_name,
                                              description     = data_process_definition.description,
@@ -184,7 +197,12 @@ class WorkflowManagementService(BaseWorkflowManagementService):
                                              spatial_domain  = sdom.dump())
                 data_product_id = self.clients.data_product_management.create_data_product(data_product_obj, stream_definition_id=stream_definition_id)
 
+                e4 = time.time()
+                print "\n\nWMS TIME: Index : create_data_product4: ", e4 - s4
+                print "\n\n"
 
+
+                s4 = time.time()
                 # Persist if necessary
                 if wf_step == workflow_definition.workflow_steps[-1] and persist_workflow_data_product:
                     self.clients.data_product_management.activate_data_product_persistence(data_product_id=data_product_id)
@@ -192,10 +210,22 @@ class WorkflowManagementService(BaseWorkflowManagementService):
                     if wf_step.persist_process_output_data:
                         self.clients.data_product_management.activate_data_product_persistence(data_product_id=data_product_id)
 
+                e4 = time.time()
+                print "\n\nWMS TIME: Index : activate_data_product_persistence4: ", e4 - s4
+                print "\n\n"
 
+                s4 = time.time()
                 #Associate the intermediate data products with the workflow
                 self.clients.resource_registry.create_association(workflow_id, PRED.hasDataProduct, data_product_id )
                 output_data_products[binding] = data_product_id
+                e4 = time.time()
+                print "\n\nWMS TIME: Index : create_association4: ", e4 - s4
+                print "\n\n"
+
+            e2 = time.time()
+            print "\n\n"
+            print "WMS TIME: Index :", index, "\t", index2, " Time:", e2 - s2
+            print "\n\n"
 
             #May have to merge configuration blocks where the workflow entries will override the configuration in a step
             if configuration:
@@ -214,7 +244,9 @@ class WorkflowManagementService(BaseWorkflowManagementService):
 
             #Save the id of the output data stream for input to the next process in the workflow.
             data_process_input_dp_id = output_data_products.values()[0]
-
+        e = time.time()
+        print "WMS TIME: for loop", e - s
+        print "WMS TIME: len  workflow_definition.workflow_steps: ", len( workflow_definition.workflow_steps),
 
         #Track the output data product with an association
         self.clients.resource_registry.create_association(workflow_id, PRED.hasOutputProduct, output_data_product_id )

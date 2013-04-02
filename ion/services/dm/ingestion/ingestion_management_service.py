@@ -56,19 +56,42 @@ class IngestionManagementService(BaseIngestionManagementService):
         #--------------------------------------------------------------------------------
         # Validate that the method call was indeed valid
         #--------------------------------------------------------------------------------
+        import time
+
+        s = time.time()
         config = config or {}
         validate_is_instance(stream_id,basestring, 'stream_id %s is not a valid string' % stream_id)
         validate_true(dataset_id,'Clients must specify the dataset to persist')
         log.info('Persisting stream %s to dataset %s.', stream_id, dataset_id)
+        e = time.time()
+        print "\n\nIM TIME: validate: ", e - s
+        print "\n\n"
 
+        s = time.time()
         ingestion_config = self.read_ingestion_configuration(ingestion_configuration_id)
+        e = time.time()
+        print "\n\nIM TIME: read_ingestion_configuration: ", e - s
+        print "\n\n"
+
+
+
+
+        s  = time.time()
         if self.is_persisted(stream_id):
             raise BadRequest('This stream is already being persisted')
+        e = time.time()
+        print "\n\nIM TIME: is_persisted: ", e - s
+        print "\n\n"
+
+        s = time.time()
         #--------------------------------------------------------------------------------
         # Set up the stream subscriptions and associations for this stream and its ingestion_type
         #--------------------------------------------------------------------------------
         if self.setup_queues(ingestion_config, stream_id, dataset_id, config):
             self.clients.pubsub_management.persist_stream(stream_id)
+        e = time.time()
+        print "\n\nIM TIME: setup queues: ", e - s
+        print "\n\n"
 
 
         return dataset_id
@@ -78,20 +101,39 @@ class IngestionManagementService(BaseIngestionManagementService):
         # Iterate through each queue, check to make sure it's a supported type
         # and it's the queue we're trying to set up
         #--------------------------------------------------------------------------------
+        import time
         for queue in ingestion_config.queues:
             # Make the subscription from the stream to this queue
             queue_name = queue.name + '_' + dataset_id
+
+            s = time.time()
             subscription_id = self.clients.pubsub_management.create_subscription(name=queue_name, stream_ids=[stream_id], exchange_name=queue_name)
+            e = time.time()
+            print "\n\nIM TIME: create_subscription: ", e - s
+
             self.clients.pubsub_management.activate_subscription(subscription_id=subscription_id)
-            
+            e = time.time()
+            print "\n\nIM TIME: activate_subscription: ", e - s
+
+            s = time.time()
             # Associate the subscription with the ingestion config which ensures no dangling resources
             self.clients.resource_registry.create_association(
                 subject=ingestion_config._id,
                 predicate=PRED.hasSubscription,
                 object=subscription_id
             )
+            e = time.time()
+            print "\n\nIM TIME: create_association: ", e - s
+
+            s = time.time()
             self._existing_dataset(stream_id, dataset_id)
+            e = time.time()
+            print "\n\nIM TIME: _existing_dataset: ", e - s
+
+            s = time.time()
             self.launch_worker(queue_name, config)
+            e = time.time()
+            print "\n\nIM TIME: launch_worker: ", e - s
 
             return True
 
@@ -104,21 +146,38 @@ class IngestionManagementService(BaseIngestionManagementService):
         config.process.buffer_limit = self.CFG.get_safe('service.ingestion_management.buffer_limit', 10)
         config.process.time_limit = self.CFG.get_safe('service.ingestion_management.time_limit', 10)
 
+        import time
+
+        s = time.time()
         process_definition_id, _  = self.clients.resource_registry.find_resources(restype=RT.ProcessDefinition, name='ingestion_worker_process', id_only=True)
         validate_true(len(process_definition_id), 'No process definition for ingestion workers could be found')
         process_definition_id = process_definition_id[0]
+        e = time.time()
+        print "\n\nIM TIME: find_resources: ", e - s
 
+
+        s = time.time()
         process_id = self.clients.process_dispatcher.create_process(process_definition_id=process_definition_id)
+        e = time.time()
+        print "\n\nIM TIME: create_process: ", e - s
 
+        s = time.time()
         xn_ids, _ = self.clients.resource_registry.find_resources(restype=RT.ExchangeName, name=queue_name, id_only=True)
         for xn_id in xn_ids:
             self.clients.resource_registry.create_association(xn_id, PRED.hasIngestionWorker, process_id)
+        e = time.time()
+        print "\n\nIM TIME: create_association: ", e - s
 
+
+        s = time.time()
         schedule = ProcessSchedule()
         schedule.restart_mode = ProcessRestartMode.ABNORMAL
         schedule.queueing_mode = ProcessQueueingMode.ALWAYS
 
         self.clients.process_dispatcher.schedule_process(process_definition_id=process_definition_id,schedule=schedule,process_id=process_id, configuration=config)
+        e = time.time()
+        print "\n\nIM TIME: schedule_process: ", e - s
+
 
     def kill_worker(self, subscription_id):
         for xn_obj in self.clients.resource_registry.find_subjects(object=subscription_id, predicate=PRED.hasSubscription, id_only=False)[0]:

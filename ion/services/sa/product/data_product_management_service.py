@@ -180,38 +180,67 @@ class DataProductManagementService(BaseDataProductManagementService):
         #--------------------------------------------------------------------------------
         # retrieve the data_process object
         #--------------------------------------------------------------------------------
+        import time
+        s = time.time()
         data_product_obj = self.RR2.read(data_product_id)
+        e = time.time()
+        print "\n\nDPMS TIME: rr2.read : ", e - s
+        print "\n\n"
 
+        s = time.time()
         validate_is_not_none(data_product_obj, "The data product id should correspond to a valid registered data product.")
+        e = time.time()
+        print "\n\nDPMS TIME: validate_is_not_none : ", e - s
+        print "\n\n"
 
+        s = time.time()
         stream_ids, _ = self.clients.resource_registry.find_objects(subject=data_product_id, predicate=PRED.hasStream, id_only=True)
         if not stream_ids:
             raise BadRequest('Specified DataProduct has no streams associated with it')
         stream_id = stream_ids[0]
+        e = time.time()
+        print "\n\nDPMS TIME: find_objects hasStream : ", e - s
+        print "\n\n"
 
+        s = time.time()
         stream_defs, _ = self.clients.resource_registry.find_objects(subject=stream_id, predicate=PRED.hasStreamDefinition,id_only=True)
         if not stream_defs:
             raise BadRequest("Data Product stream is without a stream definition")
         stream_def_id = stream_defs[0]
+        e = time.time()
+        print "\n\nDPMS TIME: find object hasStreamDefinition : ", e - s
+        print "\n\n"
 
+        s = time.time()
         stream_def = self.clients.pubsub_management.read_stream_definition(stream_def_id) # additional read necessary to fill in the pdict
-
+        e = time.time()
+        print "\n\nDPMS TIME: read_stream_definition  : ", e - s
+        print "\n\n"
         
         
 
+        s = time.time()
         dataset_id = self.clients.dataset_management.create_dataset(   name= 'data_set_%s' % stream_id,
                                                                         stream_id=stream_id,
                                                                         parameter_dict=stream_def.parameter_dictionary,
                                                                         temporal_domain=data_product_obj.temporal_domain,
                                                                         spatial_domain=data_product_obj.spatial_domain)
+        e = time.time()
+        print "\n\nDPMS TIME: create_dataset : ", e - s
+        print "\n\n"
 
+        s = time.time()
         # link dataset with data product. This creates the association in the resource registry
         self.RR2.assign_dataset_to_data_product(dataset_id, data_product_id)
-        
+        e = time.time()
+        print "\n\nDPMS TIME:assign_dataset_to_data_product : ", e - s
+        print "\n\n"
+
         log.debug("Activating data product persistence for stream_id: %s"  % str(stream_id))
 
 
 
+        s = time.time()
         #-----------------------------------------------------------------------------------------
         # grab the ingestion configuration id from the data_product in order to use to persist it
         #-----------------------------------------------------------------------------------------
@@ -219,8 +248,12 @@ class DataProductManagementService(BaseDataProductManagementService):
             ingestion_configuration_id = data_product_obj.dataset_configuration_id
         else:
             ingestion_configuration_id = self.clients.ingestion_management.list_ingestion_configurations(id_only=True)[0]
+        e = time.time()
+        print "\n\nDPMS TIME: grab the ingestion configuration : ", e - s
+        print "\n\n"
 
 
+        s = time.time()
         #--------------------------------------------------------------------------------
         # Identify lookup tables
         #--------------------------------------------------------------------------------
@@ -228,26 +261,43 @@ class DataProductManagementService(BaseDataProductManagementService):
         if self._has_lookup_values(data_product_id):
             config.process.lookup_docs = self._get_lookup_documents(data_product_id)
 
+        e = time.time()
+        print "\n\nDPMS TIME: _get_lookup_documents: ", e - s
+        print "\n\n"
+
         #--------------------------------------------------------------------------------
         # persist the data stream using the ingestion config id and stream id
         #--------------------------------------------------------------------------------
 
+        s = time.time()
         # find datasets for the data product
         dataset_id = self.clients.ingestion_management.persist_data_stream(stream_id=stream_id,
                                                 ingestion_configuration_id=ingestion_configuration_id,
                                                 dataset_id=dataset_id, 
                                                 config=config)
 
+        e = time.time()
+        print "\n\nDPMS TIME: persist_data_stream: ", e - s
+        print "\n\n"
+
+        s = time.time()
         # register the dataset for externalization
         self.clients.dataset_management.register_dataset(dataset_id, external_data_product_name=data_product_obj.description or data_product_obj.name)
+        e = time.time()
+        print "\n\nDPMS TIME: register_dataset: ", e - s
+        print "\n\n"
 
 
         #--------------------------------------------------------------------------------
         # todo: dataset_configuration_obj contains the ingest config for now...
         # Update the data product object
         #--------------------------------------------------------------------------------
+        s = time.time()
         data_product_obj.dataset_configuration_id = ingestion_configuration_id
         self.update_data_product(data_product_obj)
+        e = time.time()
+        print "\n\nDPMS TIME: update_data_product: ", e - s
+        print "\n\n"
 
 
 
