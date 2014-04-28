@@ -21,6 +21,8 @@ class BootstrapProcessDispatcher(BootstrapPlugin):
         self.ingestion_worker(process,config)
         self.replay_defs(process,config)
         self.notification_worker(process,config)
+        self.notification_worker2(process,config)
+
         self.registration_worker(process,config)
         self.pydap_server(process,config)
 
@@ -121,6 +123,34 @@ class BootstrapProcessDispatcher(BootstrapPlugin):
         for i in xrange(notification_workers):
             config.process.name = 'notification_worker_%s' % i
             config.process.queue_name = 'notification_worker_queue'
+            self.pds_client.schedule_process(process_definition_id=uns_procdef_id, configuration=config)
+
+
+    def notification_worker2(self, process, config):
+        # user notifications
+        notification_module = config.get_safe('bootstrap.processes.user_notification2.module', 'ion.processes.event.notification_worker2')
+        notification_class = config.get_safe('bootstrap.processes.user_notification2.class', 'NotificationWorker2')
+        notification_workers = config.get_safe('bootstrap.processes.user_notification2.workers', 2)
+
+        #--------------------------------------------------------------------------------
+        # Create notification workers
+        #--------------------------------------------------------------------------------
+
+        # set up the process definition
+        process_definition_uns = ProcessDefinition(
+            name='notification_worker_process_2_',
+            description='Worker transform process for user notifications')
+        process_definition_uns.executable['module']= notification_module
+        process_definition_uns.executable['class'] = notification_class
+        uns_procdef_id = self.pds_client.create_process_definition(process_definition=process_definition_uns)
+
+        config = DotDict()
+        config.process.type = 'simple'
+
+        for i in xrange(notification_workers):
+            config.process.name = 'notification_worker2_%s_' % i
+            print "\n\n\n XXXXYYY ", config.process.name
+            config.process.queue_name = 'notification_worker_queue2'
             self.pds_client.schedule_process(process_definition_id=uns_procdef_id, configuration=config)
 
 

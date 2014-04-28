@@ -166,7 +166,11 @@ class TransformEventListener(TransformEventProcess):
     def on_start(self):
         super(TransformEventListener,self).on_start()
         event_type = self.CFG.get_safe('process.event_type', '')
-        queue_name = self.CFG.get_safe('process.queue_name', None)
+        queue_name = self.CFG.get_safe('process.queue_name', "notification_worker_queue")
+
+        #self.listener = EventSubscriber(event_type=event_type, queue_name=queue_name, callback=self.process_event)
+        print "\n\n<<< queue name:", queue_name
+        print "\n\n<<< event type:", event_type
 
         self.listener = EventSubscriber(event_type=event_type, queue_name=queue_name, callback=self.process_event)
         self.add_endpoint(self.listener)
