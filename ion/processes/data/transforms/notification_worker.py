@@ -157,7 +157,6 @@ class NotificationWorker(TransformEventListener):
         '''
 
         users, _ = self.resource_registry.find_resources(restype= RT.UserInfo)
-
         user_info = {}
 
         if not users:
