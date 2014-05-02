@@ -15,6 +15,11 @@ from pyon.event.event import EventSubscriber
 from ion.services.dm.utility.uns_utility_methods import send_email, calculate_reverse_user_info
 from ion.services.dm.utility.uns_utility_methods import setting_up_smtp_client, check_user_notification_interest
 from interface.services.coi.iresource_registry_service import ResourceRegistryServiceClient
+from collections import defaultdict
+from interface.objects import DeliveryModeEnum, NotificationFrequencyEnum, NotificationTypeEnum
+from ion.services.sa.observatory.observatory_util import ObservatoryUtil
+from interface.services.coi.iresource_registry_service import ResourceRegistryServiceClient
+
 
 import gevent, time
 from gevent import queue
@@ -29,6 +34,62 @@ class NotificationWorker(TransformEventListener):
         self.q = gevent.queue.Queue()
 
         super(NotificationWorker, self).on_init()
+        self.subscribers = defaultdict(lambda: dict())
+        '''
+        Data structure
+
+        {"user_id":
+                  {
+                      "sub_id" : {
+                          "notification": notificationRequest
+                          "notification_id": "111",
+                          "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
+
+                      },
+                      "sub_id2" : {
+                          "notification": notificationRequest
+                          "notification_id": "111",
+                          "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
+                      },
+                      "sub_id3" : {
+                          "notification": notificationRequest
+                          "notification_id": "222",
+                          "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
+                      },
+                  },
+          "user_id2":
+                  {
+                      "sub_id" : {
+                          "notification": notificationRequest
+                          "notification_id": "333",
+                          "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
+
+                      },
+                      "sub_id2" : {
+                          "notification": notificationRequest
+                          "notification_id": "333",
+                          "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
+                      },
+                      "sub_id3" : {
+                          "notification": notificationRequest
+                          "notification_id": "222",
+                          "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
+                      },
+                  },
+           }
+        '''
+        self.subscription = {}
+
+        # Associates events with users
+        self.event_subscripers = dict()
+        '''
+        for each sub id, add user id who are subscribed to the events
+        {
+            "sub_id": [{"user_id": user_id, "notification_id":"xxx"}, {"user_id": user_id, "notification_id":"xxx"}
+            "sub_id2": [{"user_id": user_id, "notification_id":"xxx"}, {"user_id": user_id, "notification_id":"xxx"}
+
+        }
+        '''
 
     def test_hook(self, user_info, reverse_user_info ):
         '''
@@ -73,7 +134,7 @@ class NotificationWorker(TransformEventListener):
             except NotFound:
                 log.warning("ElasticSearch has not yet loaded the user_index.")
 
-            self.reverse_user_info =  calculate_reverse_user_info(self.user_info)
+            self.reverse_user_info = calculate_reverse_user_info(self.user_info)
             self.test_hook(self.user_info, self.reverse_user_info)
 
             #log.debug("After a reload, the user_info: %s" % self.user_info)
@@ -85,11 +146,27 @@ class NotificationWorker(TransformEventListener):
             origin='UserNotificationService',
             callback=reload_user_info
         )
-
         self.add_endpoint(self.reload_user_info_subscriber)
+
+        # the subscriber for the ReloadUSerInfoEvent
+        self.cn = EventSubscriber(
+            event_type=OT.CreateNotificationEvent,
+            origin='UserNotificationService',
+            callback=self.create_notification
+        )
+        self.add_endpoint(self.cn)
+
+        self.dn = EventSubscriber(
+            event_type=OT.DeleteNotificationEvent,
+            origin='UserNotificationService',
+            callback=self.delete_notification
+        )
+        self.add_endpoint(self.dn)
 
 
         # the subscriber for the UserInfo resource update events
+        #todo do we need this???
+        '''
         self.userinfo_rsc_mod_subscriber = EventSubscriber(
             event_type=OT.ResourceModifiedEvent,
             sub_type="UPDATE",
@@ -98,6 +175,7 @@ class NotificationWorker(TransformEventListener):
         )
 
         self.add_endpoint(self.userinfo_rsc_mod_subscriber)
+        '''
 
     def process_event(self, msg, headers):
         """
@@ -107,6 +185,7 @@ class NotificationWorker(TransformEventListener):
         # From the reverse user info dict find out which users have subscribed to that event
         #------------------------------------------------------------------------------------
 
+        #todo: from self.event_subscripers, get all users who are waiting for this event
         user_ids = []
         if self.reverse_user_info:
             user_ids = check_user_notification_interest(event = msg, reverse_user_info = self.reverse_user_info)
@@ -184,3 +263,104 @@ class NotificationWorker(TransformEventListener):
 
 
         return user_info
+
+    def create_notification(self, event_msg, headers):
+        log.debug('create_notification event_msg: %s ', event_msg)
+        # Get NotificationRequest
+        n = self.resource_registry.read(object_id=event_msg.notification_id)
+        user_id = self._get_user_id_fom_notification_id(notification_id=event_msg.notification_id)
+
+        # check if an aggregate notification is requested, then get all children ids
+        children_ids = []
+        if n.type != NotificationTypeEnum.SIMPLE and n.origin:
+            outil_client = ObservatoryUtil(self)
+            children_ids = self._find_children_by_type(parent_id=n.origin, type_=n.type, outil=outil_client)
+
+        # Add parent subscription id
+        parent_sub_id = self._add_subscriber(user_id=user_id, resource_id=event_msg.origin, event_type=event_msg.event_type,
+                                             notification=n, notification_id=event_msg.notification_id)
+
+        for child_id in children_ids:
+            self._add_subscriber(user_id=user_id, resource_id=child_id, event_type=event_msg.event_type,
+                                 notification=n, notification_id=event_msg.notification_id, parent_sub_id=parent_sub_id)
+
+    def _add_subscriber(self, user_id, resource_id, event_type, notification, notification_id, parent_sub_id=None):
+        sub = self._create_subscription_data(notification=notification, notification_id=notification_id, parent_sub_id=parent_sub_id)
+        sub_id = self._create_subscription_id(resource_id, event_type)
+
+        # Each user has dict of subscriptions
+        self.subscribers[user_id][sub_id] = sub
+
+        # Associates each event with users/subscribers
+        s_id = {"user_id": user_id, "notification_id":notification_id}
+        if s_id not in self.event_subscripers[sub_id]:
+            self.event_subscripers[sub_id].append(s_id)
+        return sub_id
+
+    def _create_subscription_data(self, notification, notification_id, parent_sub_id=None):
+        sub = {
+            "notification": notification,
+            "notification_id": notification_id,
+            "parent_sub_id": parent_sub_id
+        }
+        return sub
+
+    def _get_user_id_fom_notification_id(self, notification_id):
+        #todo review
+        user_ids, _ = self.resource_registry.find_objects(subject=notification_id, predicate=PRED.hasNotification,
+                                                          object_type=RT.NotificationRequest, id_only=False)
+        if len(user_ids) > 1:
+            raise BadRequest("_get_user_id_fom_notification_id: Multiple  user id for a single notification id ")
+
+        return user_ids[0] if len(user_ids) == 1 else None
+
+    def _create_subscription_id(self, resource_id, event_type):
+        return '%s_%s' % (resource_id, event_type)
+
+
+    def delete_notification(self, event_msg, headers):
+        '''
+        Callback method for the subscriber to ReloadUserInfoEvent
+        '''
+        #todo: delete notification from the data structure, self.subscribers and self.event_subscripers
+        n_id = event_msg.notification_id
+        print "\n\n\n\n <<<< delete notification >>>> \n"
+        for k, i in enumerate(self.subscribers):
+            # this gives us "user_id: "
+            for k1, i2 in enumerate(self.subscribers[i]):
+                # sub_id:", i2
+                # data:", m[i][i2]
+                #
+                print "my sub_id:", i2
+                print "data:", self.subscribers[i][i2]
+                print "notification_id", self.subscribers[i][i2]["notification_id"]
+
+
+
+    def _find_children_by_type(self, parent_id='', type_='', outil=None):
+
+        log.debug('_find_children_by_type  parent_id: %s   type_: %s', parent_id, type_)
+        child_ids = []
+
+        if type_ == NotificationTypeEnum.PLATFORM:
+            device_relations = outil.get_child_devices(parent_id)
+            child_ids = [did for pt,did,dt in device_relations[ parent_id] ]
+        elif type_ == NotificationTypeEnum.SITE:
+            child_site_dict, ancestors = outil.get_child_sites(parent_id)
+            child_ids = child_site_dict.keys()
+
+        elif type == NotificationTypeEnum.FACILITY:
+            resource_objs, _ = self.resource_registry.find_objects(
+                subject=parent_id, predicate=PRED.hasResource, id_only=False)
+            for resource_obj in resource_objs:
+                if resource_obj.type_ == RT.DataProduct \
+                    or resource_obj.type_ == RT.InstrumentSite or resource_obj.type_ == RT.InstrumentDevice \
+                    or resource_obj.type_ == RT.PlatformSite or resource_obj.type_ == RT.PlatformDevice:
+                    child_ids.append(resource_obj._id)
+        if parent_id in child_ids:
+            child_ids.remove(parent_id)
+        log.debug('_find_children_by_type  child_ids:  %s', child_ids)
+        return child_ids
+
+    def _create_subscription_id(self, resource_id, event_type):
+        return '%s_%s' % (resource_id, event_type)
