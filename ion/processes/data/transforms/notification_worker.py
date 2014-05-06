@@ -16,7 +16,7 @@ from ion.services.dm.utility.uns_utility_methods import send_email, calculate_re
 from ion.services.dm.utility.uns_utility_methods import setting_up_smtp_client, check_user_notification_interest
 from interface.services.coi.iresource_registry_service import ResourceRegistryServiceClient
 from collections import defaultdict
-from interface.objects import DeliveryModeEnum, NotificationFrequencyEnum, NotificationTypeEnum
+from interface.objects import DeliveryModeEnum, NotificationFrequencyEnum, NotificationTypeEnum, NotificationRequest
 from ion.services.sa.observatory.observatory_util import ObservatoryUtil
 from interface.services.coi.iresource_registry_service import ResourceRegistryServiceClient
 
@@ -51,17 +51,12 @@ class NotificationWorker(TransformEventListener):
                           "notification_id": "111",
                           "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
                       },
-                      "sub_id3" : {
-                          "notification": notificationRequest
-                          "notification_id": "222",
-                          "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
-                      },
                   },
           "user_id2":
                   {
                       "sub_id" : {
                           "notification": notificationRequest
-                          "notification_id": "333",
+                          "notification_id": "222",
                           "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
 
                       },
@@ -70,18 +65,13 @@ class NotificationWorker(TransformEventListener):
                           "notification_id": "333",
                           "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
                       },
-                      "sub_id3" : {
-                          "notification": notificationRequest
-                          "notification_id": "222",
-                          "parent_sub_id": #points to parent sub id. If this is parent, it is set to None
-                      },
                   },
            }
         '''
         self.subscription = {}
 
         # Associates events with users
-        self.event_subscripers = dict()
+        self.event_subscribers = dict()
         '''
         for each sub id, add user id who are subscribed to the events
         {
@@ -141,14 +131,15 @@ class NotificationWorker(TransformEventListener):
             #log.debug("The recalculated reverse_user_info: %s" % self.reverse_user_info)
 
         # the subscriber for the ReloadUSerInfoEvent
+        '''
         self.reload_user_info_subscriber = EventSubscriber(
             event_type=OT.ReloadUserInfoEvent,
             origin='UserNotificationService',
             callback=reload_user_info
         )
         self.add_endpoint(self.reload_user_info_subscriber)
+        '''
 
-        # the subscriber for the ReloadUSerInfoEvent
         self.cn = EventSubscriber(
             event_type=OT.CreateNotificationEvent,
             origin='UserNotificationService',
@@ -177,35 +168,17 @@ class NotificationWorker(TransformEventListener):
         self.add_endpoint(self.userinfo_rsc_mod_subscriber)
         '''
 
-    def process_event(self, msg, headers):
+    def process_event(self, event_msg, headers):
         """
         Callback method for the subscriber listening for all events
         """
-        #------------------------------------------------------------------------------------
-        # From the reverse user info dict find out which users have subscribed to that event
-        #------------------------------------------------------------------------------------
-
-        #todo: from self.event_subscripers, get all users who are waiting for this event
-        user_ids = []
-        if self.reverse_user_info:
-            user_ids = check_user_notification_interest(event = msg, reverse_user_info = self.reverse_user_info)
-
-            #log.debug('process_event  user_ids: %s', user_ids)
-
-            #log.debug("Notification worker found interested users %s" % user_ids)
-
-        #------------------------------------------------------------------------------------
-        # Send email to the users
-        #------------------------------------------------------------------------------------
+        #todo: from self.event_subscribers, get all users who are waiting for this event
+        sub_id = self._create_subscription_id(resource_id=event_msg.notification_origin, event_type=event_msg.notification_event_type)
+        user_ids = self.event_subscribers[sub_id]
 
         for user_id in user_ids:
-            msg_recipient = self.user_info[user_id]['user_contact'].email
-            self.smtp_client = setting_up_smtp_client()
-            send_email(event=msg,
-                       msg_recipient=msg_recipient,
-                       smtp_client=self.smtp_client,
-                       rr_client=self.resource_registry)
-            self.smtp_client.quit()
+            if self.subscribers[user_id][sub_id]:
+                self.send_real_time_notification(notification_request=self.subscribers[user_id][sub_id], event_msg=event_msg)
 
     def get_user_notifications(self, user_info_id=''):
         """
@@ -234,6 +207,7 @@ class NotificationWorker(TransformEventListener):
 
         @retval user_info dict
         '''
+        """
 
         users, _ = self.resource_registry.find_resources(restype= RT.UserInfo)
         user_info = {}
@@ -263,6 +237,7 @@ class NotificationWorker(TransformEventListener):
 
 
         return user_info
+        """
 
     def create_notification(self, event_msg, headers):
         log.debug('create_notification event_msg: %s ', event_msg)
@@ -293,8 +268,8 @@ class NotificationWorker(TransformEventListener):
 
         # Associates each event with users/subscribers
         s_id = {"user_id": user_id, "notification_id":notification_id}
-        if s_id not in self.event_subscripers[sub_id]:
-            self.event_subscripers[sub_id].append(s_id)
+        if s_id not in self.event_subscribers[sub_id]:
+            self.event_subscribers[sub_id].append(s_id)
         return sub_id
 
     def _create_subscription_data(self, notification, notification_id, parent_sub_id=None):
@@ -319,10 +294,7 @@ class NotificationWorker(TransformEventListener):
 
 
     def delete_notification(self, event_msg, headers):
-        '''
-        Callback method for the subscriber to ReloadUserInfoEvent
-        '''
-        #todo: delete notification from the data structure, self.subscribers and self.event_subscripers
+        #todo: delete notification from the data structure, self.subscribers and self.event_subscribers
         n_id = event_msg.notification_id
         print "\n\n\n\n <<<< delete notification >>>> \n"
         for k, i in enumerate(self.subscribers):
@@ -338,7 +310,6 @@ class NotificationWorker(TransformEventListener):
 
 
     def _find_children_by_type(self, parent_id='', type_='', outil=None):
-
         log.debug('_find_children_by_type  parent_id: %s   type_: %s', parent_id, type_)
         child_ids = []
 
@@ -364,3 +335,21 @@ class NotificationWorker(TransformEventListener):
 
     def _create_subscription_id(self, resource_id, event_type):
         return '%s_%s' % (resource_id, event_type)
+
+
+    def send_real_time_notification(self, notification_request, event_msg):
+        # Check max number of notification sent
+        # Check if notification is disabled
+        # Send email or sms
+        # update the counter
+        # Publish "notification sent out event"
+        log.debug('send_real_time_notification  notification_request: %s   event_msg: %s', notification_request, event_msg)
+
+    def update_notification_counter(self,  event_msg, headers):
+        # event subscriber, gets called when "notification sent out event" is published
+        # Increment the notification counter
+        log.debug('update_notification_counter')
+
+    def clear_notification_counter(self,  event_msg, headers):
+        # event subscriber, gets called around midnight to clear all notification counters
+        log.debug('clear_notification_counter')

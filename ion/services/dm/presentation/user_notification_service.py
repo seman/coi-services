@@ -205,10 +205,18 @@ class UserNotificationService(BaseUserNotificationService):
         #-------------------------------------------------------------------------------------------------------------------
         #log.debug("(create notification) Publishing ReloadUserInfoEvent for notification_id: %s", notification_id)
 
+        #todo
         self.event_publisher.publish_event( event_type= OT.ReloadUserInfoEvent,
             origin="UserNotificationService",
             description= "A notification has been created.",
             notification_id = notification_id)
+
+        '''
+        self.event_publisher.publish_event(event_type=OT.CreateNotificationEvent,
+            origin="UserNotificationService",
+            description="A notification has been created.",
+            notification_id=notification_id)
+        '''
 
         return notification_id
 
@@ -320,10 +328,17 @@ class UserNotificationService(BaseUserNotificationService):
         #-------------------------------------------------------------------------------------------------------------------
         log.info("(delete notification) Publishing ReloadUserInfoEvent for notification_id: %s", notification_id)
 
-        self.event_publisher.publish_event( event_type= OT.ReloadUserInfoEvent,
+        #todo
+        '''
+        self.event_publisher.publish_event( event_type=OT.ReloadUserInfoEvent,
             origin="UserNotificationService",
             description= "A notification has been deleted.",
             notification_id = notification_id)
+        '''
+        self.event_publisher.publish_event(event_type=OT.DeleteNotificationEvent,
+            origin="UserNotificationService",
+            description="A notification has been deleted.",
+            notification_id=notification_id)
 
 #    def delete_notification_from_user_info(self, notification_id):
 #        """
